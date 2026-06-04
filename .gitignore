@@ -1,0 +1,53 @@
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.obj
+
+# Linker output files
+*.ilk
+*.map
+*.exp
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared libraries (OS-specific)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Common Build Directories
+build/
+bin/
+obj/
+out/
+dist/
+
+# Debug files
+*.pdb
+*.dSYM/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
