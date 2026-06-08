@@ -20,6 +20,60 @@ void time_parser(time_t timestamp, char *buffer, size_t buffer_size) {
   strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", t);
 }
 
+cJSON *read_task_file() {
+  FILE *fp = fopen(TASK_FILE, "r");
+  if (fp == NULL) {
+    return cJSON_CreateArray();
+  }
+
+  fseek(fp, 0, SEEK_END);
+  int file_size = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+
+  if (file_size == 0) {
+    fclose(fp);
+    return cJSON_CreateArray();
+  }
+
+  char *buffer = malloc(file_size + 1);
+  fread(buffer, 1, file_size, fp);
+  buffer[file_size] = '\n';
+  fclose(fp);
+
+  cJSON *root = cJSON_Parse(buffer);
+  free(buffer);
+
+  if (!root || !cJSON_IsArray(root)) {
+    if (root)
+      cJSON_Delete(root);
+    return cJSON_CreateArray();
+  }
+
+  return root;
+}
+
+int write_task_file(cJSON *root) {
+  if (root == NULL) {
+    return 1;
+  }
+
+  FILE *fp = fopen(TASK_FILE, "w");
+  if (fp == NULL) {
+    return 1;
+  }
+
+  char *json_str = cJSON_Print(root);
+  if (!json_str) {
+    fclose(fp);
+    return 1;
+  }
+
+  fputs(json_str, fp);
+  fclose(fp);
+  cJSON_free(json_str);
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("Usage: task-cli [add] [description]");
@@ -89,43 +143,8 @@ int main(int argc, char *argv[]) {
 }
 
 int get_next_id() {
-
-  // read the file; return error if the program cant read the file
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error opening file");
-    exit(1);
-  }
-
-  fseek(fp, 0, SEEK_END); // set the file pointer to the end [from 0 to end];
-  long file_size = ftell(fp); // store the value, which is basically the file
-                              // size by file content
-  fseek(fp, 0, SEEK_SET);     // set the file pointer back to start
-
-  // if file size is 0; that means there are no task so we return 1 as the
-  // first id
-  if (file_size == 0) {
-    printf("File is empty, starting with id 1\n");
-    fclose(fp);
-    return 1;
-  }
-
-  char *buffer = malloc(
-      file_size + 1); // allocate memory to store file content in the memory
-  fread(buffer, 1, file_size, fp); // store the file content with fread
-  buffer[file_size] =
-      '\0';   // set null terminator as the last element as the string
-  fclose(fp); // close the file
-
-  cJSON *root = cJSON_Parse(buffer); // parse the file content with cJSON; now
-                                     // root pointer has the all json objects
-  free(buffer);                      // free the allocated memory
-
-  // if the json content is not cJSON array; that means there are no tasks and
-  // we return 1
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("No valid tasks array was found. Starting with id 1\n");
-    cJSON_Delete(root);
+  cJSON *root = read_task_file(); // parse the file content with cJSON; now
+  if (!root) {
     return 1;
   }
 
@@ -167,33 +186,7 @@ void add_task(char *description) {
   // set new id
   int new_id = get_next_id();
 
-  FILE *fp = fopen(TASK_FILE, "r");
-  cJSON *root = NULL;
-
-  if (fp != NULL) {
-    fseek(fp, 0, SEEK_END);
-    int file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    if (file_size > 0) {
-      char *buffer = malloc(file_size + 1);
-      fread(buffer, file_size, 1, fp);
-      buffer[file_size] = '\0';
-      root = cJSON_Parse(buffer);
-      free(buffer);
-    }
-    fclose(fp);
-  } else {
-    printf("Error: opening file\n");
-    return;
-  }
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    if (root) {
-      cJSON_Delete(root);
-    }
-    root = cJSON_CreateArray();
-  }
+  cJSON *root = read_task_file();
 
   time_t now = time(NULL);
 
@@ -206,43 +199,17 @@ void add_task(char *description) {
 
   cJSON_AddItemToArray(root, task);
 
-  fp = fopen(TASK_FILE, "w");
-  char *json_str = cJSON_Print(root);
-  fputs(json_str, fp);
-  fclose(fp);
-
-  printf("Added task %d : %s\n", new_id, description);
+  if (write_task_file(root) == 0) {
+    printf("Added task %d : %s\n", new_id, description);
+  } else {
+    printf("Error: Failed to save task!\n");
+  }
+  cJSON_Delete(root);
 }
 
 void list_task() {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error opening file\n");
-    return;
-  }
-
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("NO task found! File is empty\n");
-    fclose(fp);
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  fread(buffer, file_size, 1, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (!root || !cJSON_IsArray(root)) {
-    printf("Invalid task file\n");
-    if (root)
-      cJSON_Delete(root);
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
 
@@ -277,32 +244,9 @@ void list_task() {
 }
 
 void delete_task(int id) {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error: opening file\n");
-    return;
-  }
 
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("File has no content\n");
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  fread(buffer, file_size, 1, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("Erro: Invalid task file\n");
-    cJSON_Delete(root);
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
 
@@ -317,7 +261,6 @@ void delete_task(int id) {
 
       if (current_id == id) {
         cJSON_DeleteItemFromArray(root, i);
-        printf("Task %d has been deleted!\n", id);
         found = 1;
         break;
       }
@@ -325,11 +268,11 @@ void delete_task(int id) {
   }
 
   if (found) {
-    fp = fopen(TASK_FILE, "w");
-    char *json_str = cJSON_Print(root);
-    fputs(json_str, fp);
-    fclose(fp);
-    cJSON_free(json_str);
+    if (write_task_file(root) == 0) {
+      printf("Task %d has been deleted\n", id);
+    } else {
+      printf("Error: Failed to save file\n");
+    }
   } else {
     printf("Error: no task with id: %d\n", id);
   }
@@ -338,37 +281,8 @@ void delete_task(int id) {
 }
 
 void update_task(int id, char *description) {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error: opening file.\n");
-    return;
-  }
-
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("File has no task.\n");
-    fclose(fp);
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  if (buffer == NULL) {
-    printf("Error: memory allocation failed.\n");
-    fclose(fp);
-  }
-
-  fread(buffer, 1, file_size, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("Error: Invalid task file.\n");
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
 
@@ -396,13 +310,10 @@ void update_task(int id, char *description) {
   }
 
   if (found) {
-    fp = fopen(TASK_FILE, "w");
-    if (fp != NULL) {
-      char *json_str = cJSON_Print(root);
-      fputs(json_str, fp);
-      fclose(fp);
-      cJSON_free(json_str);
-      printf("Task updated!\n");
+    if (write_task_file(root) == 0) {
+      printf("Task %d has been deleted\n", id);
+    } else {
+      printf("Error: Failed to save file\n");
     }
   } else {
     printf("Error: No task with id: %d\n", id);
@@ -412,40 +323,10 @@ void update_task(int id, char *description) {
 }
 
 void mark_progress(int id) {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error: opening file.\n");
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
-
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("File has no task.\n");
-    fclose(fp);
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  if (buffer == NULL) {
-    printf("Error: memory allocation failed.\n");
-    fclose(fp);
-  }
-
-  fread(buffer, 1, file_size, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("Error: Invalid task file.\n");
-    return;
-  }
-
   int array_size = cJSON_GetArraySize(root);
   int found = 0;
 
@@ -466,13 +347,11 @@ void mark_progress(int id) {
   }
 
   if (found) {
-    fp = fopen(TASK_FILE, "w");
-    if (fp != NULL) {
-      char *json_str = cJSON_Print(root);
-      fputs(json_str, fp);
-      fclose(fp);
-      cJSON_free(json_str);
-      printf("Task updated!\n");
+
+    if (write_task_file(root) == 0) {
+      printf("Task %d has been deleted\n", id);
+    } else {
+      printf("Error: Failed to save file\n");
     }
   } else {
     printf("Error: No task with id: %d\n", id);
@@ -482,37 +361,8 @@ void mark_progress(int id) {
 }
 
 void mark_done(int id) {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error: opening file.\n");
-    return;
-  }
-
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("File has no task.\n");
-    fclose(fp);
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  if (buffer == NULL) {
-    printf("Error: memory allocation failed.\n");
-    fclose(fp);
-  }
-
-  fread(buffer, 1, file_size, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("Error: Invalid task file.\n");
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
 
@@ -536,13 +386,10 @@ void mark_done(int id) {
   }
 
   if (found) {
-    fp = fopen(TASK_FILE, "w");
-    if (fp != NULL) {
-      char *json_str = cJSON_Print(root);
-      fputs(json_str, fp);
-      fclose(fp);
-      cJSON_free(json_str);
-      printf("Task updated!\n");
+    if (write_task_file(root) == 0) {
+      printf("Task %d has been deleted\n", id);
+    } else {
+      printf("Error: Failed to save file\n");
     }
   } else {
     printf("Error: No task with id: %d\n", id);
@@ -552,37 +399,8 @@ void mark_done(int id) {
 }
 
 void list_task_arg(char *status) {
-  FILE *fp = fopen(TASK_FILE, "r");
-  if (fp == NULL) {
-    printf("Error: opening file.\n");
-    return;
-  }
-
-  fseek(fp, 0, SEEK_END);
-  int file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  if (file_size == 0) {
-    printf("File has no task.\n");
-    fclose(fp);
-    return;
-  }
-
-  char *buffer = malloc(file_size + 1);
-  if (buffer == NULL) {
-    printf("Error: memory allocation failed.\n");
-    fclose(fp);
-  }
-
-  fread(buffer, 1, file_size, fp);
-  buffer[file_size] = '\0';
-  fclose(fp);
-
-  cJSON *root = cJSON_Parse(buffer);
-  free(buffer);
-
-  if (root == NULL || !cJSON_IsArray(root)) {
-    printf("Error: Invalid task file.\n");
+  cJSON *root = read_task_file();
+  if (!root) {
     return;
   }
 
