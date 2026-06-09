@@ -197,4 +197,4 @@ This project is open source and available under the MIT License.
 ## Acknowledgments
 
 * cJSON for JSON parsing in C
-* Inspired by the roadmap.sh Task Tracker project
+* Inspired by the [roadmap.sh](https://roadmap.sh/) [Task Tracker](https://roadmap.sh/projects/task-tracker) project
