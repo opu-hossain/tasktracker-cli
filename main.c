@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 }
 
 int get_next_id() {
-  cJSON *root = read_task_file(); // parse the file content with cJSON; now
+  cJSON *root = read_task_file();
   if (!root) {
     return 1;
   }

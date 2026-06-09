@@ -51,3 +51,6 @@ dist/
 *.swp
 *~
 .DS_Store
+
+#json
+*.json
