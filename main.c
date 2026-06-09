@@ -200,7 +200,7 @@ void add_task(char *description) {
   cJSON_AddItemToArray(root, task);
 
   if (write_task_file(root) == 0) {
-    printf("Added task %d : %s\n", new_id, description);
+    printf("Added task %d: %s\n", new_id, description);
   } else {
     printf("Error: Failed to save task!\n");
   }
